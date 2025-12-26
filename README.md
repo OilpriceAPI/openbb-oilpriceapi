@@ -137,6 +137,22 @@ Fetch latest commodity prices.
 - `change`: Price change (absolute)
 - `change_percent`: Price change (percentage)
 
+### OilHistorical
+
+Fetch historical price data.
+
+**Parameters:**
+- `symbol` (str, required): Commodity symbol
+- `period` (str): Historical period - `past_day` (24h hourly), `past_week` (7d daily), `past_month` (30d daily). Default: `past_week`
+- `provider` (str): Must be "oilpriceapi"
+
+**Returns:**
+- `date`: Price timestamp
+- `symbol`: Commodity symbol
+- `price`: Price at timestamp
+- `currency`: Price currency
+- `unit`: Unit of measurement
+
 ## Development
 
 ```bash
