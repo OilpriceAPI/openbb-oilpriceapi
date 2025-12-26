@@ -1,13 +1,19 @@
 """OilPriceAPI Oil Price model and fetcher."""
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 
 import httpx
 from openbb_core.provider.abstract.fetcher import Fetcher
 from openbb_core.provider.abstract.query_params import QueryParams
 from openbb_core.provider.abstract.data import Data
 from pydantic import Field, field_validator
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential,
+    retry_if_exception_type,
+)
 
 from openbb_oilpriceapi.utils.constants import (
     SYMBOL_MAPPING,
@@ -15,6 +21,30 @@ from openbb_oilpriceapi.utils.constants import (
     OILPRICEAPI_BASE_URL,
     REVERSE_SYMBOL_MAPPING,
 )
+
+
+class OilPriceAPIError(Exception):
+    """Base exception for OilPriceAPI errors."""
+
+    pass
+
+
+class AuthenticationError(OilPriceAPIError):
+    """Raised when API key is invalid or missing."""
+
+    pass
+
+
+class RateLimitError(OilPriceAPIError):
+    """Raised when rate limit is exceeded."""
+
+    pass
+
+
+class NotFoundError(OilPriceAPIError):
+    """Raised when commodity is not found."""
+
+    pass
 
 
 class OilPriceAPIQueryParams(QueryParams):
@@ -67,9 +97,7 @@ class OilPriceAPIData(Data):
     )
 
 
-class OilPriceAPIFetcher(
-    Fetcher[OilPriceAPIQueryParams, list[OilPriceAPIData]]
-):
+class OilPriceAPIFetcher(Fetcher[OilPriceAPIQueryParams, list[OilPriceAPIData]]):
     """OilPriceAPI Oil Price Fetcher."""
 
     require_credentials = True
@@ -80,6 +108,35 @@ class OilPriceAPIFetcher(
         return OilPriceAPIQueryParams(**params)
 
     @staticmethod
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=1, max=10),
+        retry=retry_if_exception_type(RateLimitError),
+        reraise=True,
+    )
+    async def _fetch_with_retry(
+        client: httpx.AsyncClient,
+        url: str,
+        headers: dict[str, str],
+    ) -> dict[str, Any]:
+        """Fetch data with retry logic for rate limits."""
+        response = await client.get(url, headers=headers)
+
+        if response.status_code == 401:
+            raise AuthenticationError(
+                "Invalid API key. Check your OilPriceAPI credentials."
+            )
+        if response.status_code == 429:
+            raise RateLimitError(
+                "Rate limit exceeded. Retrying with exponential backoff..."
+            )
+        if response.status_code == 404:
+            raise NotFoundError("Commodity not found.")
+
+        response.raise_for_status()
+        return response.json()
+
+    @staticmethod
     async def aextract_data(
         query: OilPriceAPIQueryParams,
         credentials: dict[str, str] | None,
@@ -88,7 +145,7 @@ class OilPriceAPIFetcher(
         """Extract data from OilPriceAPI."""
         api_key = credentials.get("api_key") if credentials else None
         if not api_key:
-            raise ValueError(
+            raise AuthenticationError(
                 "OilPriceAPI API key is required. "
                 "Get a free key at https://oilpriceapi.com"
             )
@@ -107,20 +164,14 @@ class OilPriceAPIFetcher(
             else:
                 url = f"{OILPRICEAPI_BASE_URL}/prices/latest"
 
-            response = await client.get(url, headers=headers)
-
-            if response.status_code == 401:
-                raise ValueError("Invalid API key. Check your OilPriceAPI credentials.")
-            if response.status_code == 429:
-                raise ValueError(
-                    "Rate limit exceeded. Please wait before making more requests."
+            try:
+                data = await OilPriceAPIFetcher._fetch_with_retry(client, url, headers)
+            except RateLimitError:
+                # Re-raise with user-friendly message after retries exhausted
+                raise RateLimitError(
+                    "Rate limit exceeded after 3 retries. "
+                    "Please wait before making more requests."
                 )
-            if response.status_code == 404:
-                raise ValueError(f"Commodity not found: {query.symbol}")
-
-            response.raise_for_status()
-
-            data = response.json()
 
             # Handle different response structures
             if "data" in data:

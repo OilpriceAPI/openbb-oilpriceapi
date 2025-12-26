@@ -13,6 +13,7 @@ keywords = ["openbb", "oil", "commodity", "api", "energy", "prices", "wti", "bre
 python = ">=3.10,<3.14"
 openbb-core = "^1.5.1"
 httpx = "^0.27.0"
+tenacity = "^8.2.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
