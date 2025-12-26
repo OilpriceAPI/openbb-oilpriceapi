@@ -30,6 +30,7 @@ Usage:
 
 from openbb_core.provider.abstract.provider import Provider
 from openbb_oilpriceapi.models.oil_price import OilPriceAPIFetcher
+from openbb_oilpriceapi.models.oil_historical import OilHistoricalFetcher
 
 oilpriceapi_provider = Provider(
     name="oilpriceapi",
@@ -42,6 +43,7 @@ oilpriceapi_provider = Provider(
     credentials=["api_key"],
     fetcher_dict={
         "OilPrice": OilPriceAPIFetcher,
+        "OilHistorical": OilHistoricalFetcher,
     },
     repr_name="OilPriceAPI",
     instructions=(

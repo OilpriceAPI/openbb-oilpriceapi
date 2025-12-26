@@ -9,6 +9,11 @@ from openbb_oilpriceapi.models.oil_price import (
     RateLimitError,
     NotFoundError,
 )
+from openbb_oilpriceapi.models.oil_historical import (
+    OilHistoricalFetcher,
+    OilHistoricalQueryParams,
+    OilHistoricalData,
+)
 
 __all__ = [
     "OilPriceAPIFetcher",
@@ -18,4 +23,7 @@ __all__ = [
     "AuthenticationError",
     "RateLimitError",
     "NotFoundError",
+    "OilHistoricalFetcher",
+    "OilHistoricalQueryParams",
+    "OilHistoricalData",
 ]
