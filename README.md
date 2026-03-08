@@ -16,7 +16,7 @@ pip install openbb-oilpriceapi
 ```python
 from openbb import obb
 
-# Configure your API key (get free key at https://oilpriceapi.com/signup)
+# Configure your API key (get free key at https://www.oilpriceapi.com/signup?utm_source=openbb&utm_medium=integration&utm_campaign=readme)
 obb.user.credentials.oilpriceapi_api_key = "your_api_key"
 
 # Get all commodity prices
@@ -31,18 +31,18 @@ print(f"WTI Price: ${wti.results[0].price}/barrel")
 
 ## Supported Commodities
 
-| Symbol | Name | Description |
-|--------|------|-------------|
-| `WTI` | WTI Crude Oil | West Texas Intermediate benchmark |
-| `BRENT` | Brent Crude Oil | North Sea benchmark |
-| `URALS` | Urals Crude Oil | Russian export blend |
-| `DUBAI` | Dubai Crude Oil | Middle East benchmark |
-| `NG` | Natural Gas (US) | Henry Hub |
-| `NG_EU` | Natural Gas (EU) | TTF |
-| `NG_UK` | Natural Gas (UK) | NBP |
-| `COAL` | Coal | Thermal coal |
-| `DIESEL_US` | US Diesel | National average |
-| `GASOLINE_US` | US Gasoline | National average |
+| Symbol        | Name             | Description                       |
+| ------------- | ---------------- | --------------------------------- |
+| `WTI`         | WTI Crude Oil    | West Texas Intermediate benchmark |
+| `BRENT`       | Brent Crude Oil  | North Sea benchmark               |
+| `URALS`       | Urals Crude Oil  | Russian export blend              |
+| `DUBAI`       | Dubai Crude Oil  | Middle East benchmark             |
+| `NG`          | Natural Gas (US) | Henry Hub                         |
+| `NG_EU`       | Natural Gas (EU) | TTF                               |
+| `NG_UK`       | Natural Gas (UK) | NBP                               |
+| `COAL`        | Coal             | Thermal coal                      |
+| `DIESEL_US`   | US Diesel        | National average                  |
+| `GASOLINE_US` | US Gasoline      | National average                  |
 
 ## Configuration
 
@@ -51,12 +51,14 @@ print(f"WTI Price: ${wti.results[0].price}/barrel")
 You can set your API key in multiple ways:
 
 **Option 1: In Python**
+
 ```python
 obb.user.credentials.oilpriceapi_api_key = "your_key"
 ```
 
 **Option 2: Via settings file**
 Add to `~/.openbb_platform/user_settings.json`:
+
 ```json
 {
   "credentials": {
@@ -66,6 +68,7 @@ Add to `~/.openbb_platform/user_settings.json`:
 ```
 
 **Option 3: Environment variable**
+
 ```bash
 export OPENBB_OILPRICEAPI_API_KEY="your_key"
 ```
@@ -124,10 +127,12 @@ plt.show()
 Fetch latest commodity prices.
 
 **Parameters:**
+
 - `symbol` (str, optional): Commodity symbol. If not provided, returns all commodities.
 - `provider` (str): Must be "oilpriceapi"
 
 **Returns:**
+
 - `symbol`: Commodity symbol
 - `name`: Commodity name
 - `price`: Current price
@@ -142,11 +147,13 @@ Fetch latest commodity prices.
 Fetch historical price data.
 
 **Parameters:**
+
 - `symbol` (str, required): Commodity symbol
 - `period` (str): Historical period - `past_day` (24h hourly), `past_week` (7d daily), `past_month` (30d daily). Default: `past_week`
 - `provider` (str): Must be "oilpriceapi"
 
 **Returns:**
+
 - `date`: Price timestamp
 - `symbol`: Commodity symbol
 - `price`: Price at timestamp
@@ -172,10 +179,18 @@ poetry run pytest --cov=openbb_oilpriceapi
 
 ## Links
 
-- [OilPriceAPI Website](https://oilpriceapi.com)
+- [OilPriceAPI Website](https://www.oilpriceapi.com)
+- [Sign Up](https://www.oilpriceapi.com/signup?utm_source=openbb&utm_medium=integration&utm_campaign=readme)
 - [OilPriceAPI Documentation](https://docs.oilpriceapi.com)
+- [Pricing](https://www.oilpriceapi.com/pricing?utm_source=openbb&utm_medium=integration&utm_campaign=pricing)
 - [OpenBB Platform](https://openbb.co)
 - [GitHub Repository](https://github.com/OilpriceAPI/openbb-oilpriceapi)
+
+## Also Available As
+
+- **[Python SDK](https://pypi.org/project/oilpriceapi/)** - Standalone Python client with Pandas integration
+- **[MCP Server](https://www.npmjs.com/package/oilpriceapi-mcp)** - Model Context Protocol server for Claude and Cursor
+- **[Google Sheets Add-on](https://github.com/OilpriceAPI/google-sheets-addin)** - Custom functions for spreadsheets
 
 ## License
 
