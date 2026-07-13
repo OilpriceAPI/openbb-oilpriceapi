@@ -293,6 +293,83 @@ class TestOilPriceFetcher:
             assert len(result) == 2
             assert result[0]["code"] == "WTI_USD"
 
+    @pytest.mark.asyncio
+    async def test_successful_fetch_single_flat(self):
+        """Test fetch with the current live API single-price shape.
+
+        /v1/prices/latest returns the record directly under "data" with
+        "price" as a number (not a nested object).
+        """
+        from openbb_oilpriceapi.models.oil_price import (
+            OilPriceAPIFetcher,
+            OilPriceAPIQueryParams,
+        )
+
+        flat_response = {
+            "status": "success",
+            "data": {
+                "code": "WTI_USD",
+                "price": 73.91,
+                "currency": "USD",
+                "unit": "barrel",
+                "type": "spot_price",
+                "created_at": "2026-07-13T13:11:44.152Z",
+                "updated_at": "2026-07-13T13:11:44.152Z",
+            },
+        }
+
+        query = OilPriceAPIQueryParams(symbol="WTI")
+        credentials = {"api_key": "test_key"}
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = flat_response
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.get.return_value = mock_response
+            mock_instance.__aenter__.return_value = mock_instance
+            mock_instance.__aexit__.return_value = None
+            mock_client.return_value = mock_instance
+
+            result = await OilPriceAPIFetcher.aextract_data(query, credentials)
+
+        assert len(result) == 1
+        assert result[0]["code"] == "WTI_USD"
+        assert result[0]["price"] == 73.91
+
+        transformed = OilPriceAPIFetcher.transform_data(query, result)
+        assert transformed[0].symbol == "WTI"
+        assert transformed[0].price == 73.91
+
+    @pytest.mark.asyncio
+    async def test_successful_fetch_single_legacy(self, mock_api_response_single):
+        """Test fetch with the legacy nested single-price shape."""
+        from openbb_oilpriceapi.models.oil_price import (
+            OilPriceAPIFetcher,
+            OilPriceAPIQueryParams,
+        )
+
+        query = OilPriceAPIQueryParams(symbol="WTI")
+        credentials = {"api_key": "test_key"}
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = mock_api_response_single
+
+        with patch("httpx.AsyncClient") as mock_client:
+            mock_instance = AsyncMock()
+            mock_instance.get.return_value = mock_response
+            mock_instance.__aenter__.return_value = mock_instance
+            mock_instance.__aexit__.return_value = None
+            mock_client.return_value = mock_instance
+
+            result = await OilPriceAPIFetcher.aextract_data(query, credentials)
+
+        assert len(result) == 1
+        assert result[0]["code"] == "WTI_USD"
+        assert result[0]["price"] == 72.50
+
 
 class TestSymbolMapping:
     """Test cases for commodity symbol mapping."""
@@ -303,7 +380,7 @@ class TestSymbolMapping:
 
         assert SYMBOL_MAPPING["WTI"] == "WTI_USD"
         assert SYMBOL_MAPPING["BRENT"] == "BRENT_CRUDE_USD"
-        assert SYMBOL_MAPPING["URALS"] == "URALS_USD"
+        assert SYMBOL_MAPPING["URALS"] == "URALS_CRUDE_USD"
         assert SYMBOL_MAPPING["NG"] == "NATURAL_GAS_USD"
 
     def test_reverse_mapping(self):
@@ -312,7 +389,7 @@ class TestSymbolMapping:
 
         assert REVERSE_SYMBOL_MAPPING["WTI_USD"] == "WTI"
         assert REVERSE_SYMBOL_MAPPING["BRENT_CRUDE_USD"] == "BRENT"
-        assert REVERSE_SYMBOL_MAPPING["URALS_USD"] == "URALS"
+        assert REVERSE_SYMBOL_MAPPING["URALS_CRUDE_USD"] == "URALS"
 
     def test_available_symbols(self):
         """Test list of available symbols."""

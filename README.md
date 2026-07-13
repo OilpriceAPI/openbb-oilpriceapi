@@ -41,8 +41,8 @@ print(f"WTI Price: ${wti.results[0].price}/barrel")
 | `NG_EU`       | Natural Gas (EU) | TTF                               |
 | `NG_UK`       | Natural Gas (UK) | NBP                               |
 | `COAL`        | Coal             | Thermal coal                      |
-| `DIESEL_US`   | US Diesel        | National average                  |
-| `GASOLINE_US` | US Gasoline      | National average                  |
+| `DIESEL_US`   | US Diesel        | Wholesale spot price              |
+| `GASOLINE_US` | US Gasoline      | Wholesale spot price              |
 
 ## Configuration
 

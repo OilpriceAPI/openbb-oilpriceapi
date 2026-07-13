@@ -175,14 +175,20 @@ class OilPriceAPIFetcher(Fetcher[OilPriceAPIQueryParams, list[OilPriceAPIData]])
 
             # Handle different response structures
             if "data" in data:
-                if "prices" in data["data"]:
-                    # Multiple prices response
-                    return data["data"]["prices"]
-                elif "price" in data["data"]:
-                    # Single price response
-                    return [data["data"]["price"]]
-                else:
-                    return [data["data"]]
+                payload = data["data"]
+                if isinstance(payload, dict):
+                    if "prices" in payload:
+                        # Multiple prices response
+                        return payload["prices"]
+                    if isinstance(payload.get("price"), dict):
+                        # Legacy single price response: {"data": {"price": {...}}}
+                        return [payload["price"]]
+                    # Current single price response: the record itself is under
+                    # "data" with "price" as a number, e.g.
+                    # {"data": {"code": "WTI_USD", "price": 78.8, ...}}
+                    return [payload]
+                if isinstance(payload, list):
+                    return payload
 
             return []
 

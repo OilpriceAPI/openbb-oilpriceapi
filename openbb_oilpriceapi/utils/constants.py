@@ -10,17 +10,17 @@ SYMBOL_MAPPING: dict[str, str] = {
     # Crude Oil
     "WTI": "WTI_USD",
     "BRENT": "BRENT_CRUDE_USD",
-    "URALS": "URALS_USD",
+    "URALS": "URALS_CRUDE_USD",
     "DUBAI": "DUBAI_CRUDE_USD",
     # Natural Gas
     "NG": "NATURAL_GAS_USD",
-    "NG_EU": "NATURAL_GAS_EU",
+    "NG_EU": "DUTCH_TTF_EUR",
     "NG_UK": "NATURAL_GAS_GBP",
     # Coal
     "COAL": "COAL_USD",
     # Diesel/Gasoline
-    "DIESEL_US": "DIESEL_US_NATIONAL",
-    "GASOLINE_US": "GASOLINE_US_NATIONAL",
+    "DIESEL_US": "DIESEL_USD",
+    "GASOLINE_US": "GASOLINE_USD",
 }
 
 # Reverse mapping for transforming API responses
