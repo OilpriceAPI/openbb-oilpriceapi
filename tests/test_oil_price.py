@@ -4,6 +4,7 @@ import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
+from tenacity import wait_none
 
 
 class TestOilPriceQueryParams:
@@ -312,6 +313,7 @@ class TestOilPriceFetcher:
                 "price": 73.91,
                 "currency": "USD",
                 "unit": "barrel",
+                "source": "market_reporting",
                 "type": "spot_price",
                 "created_at": "2026-07-13T13:11:44.152Z",
                 "updated_at": "2026-07-13T13:11:44.152Z",
@@ -341,6 +343,168 @@ class TestOilPriceFetcher:
         transformed = OilPriceAPIFetcher.transform_data(query, result)
         assert transformed[0].symbol == "WTI"
         assert transformed[0].price == 73.91
+        assert transformed[0].source == "market_reporting"
+
+    def test_transform_rejects_missing_price(self):
+        """A successful payload may not be normalized to a zero price."""
+        from openbb_oilpriceapi.models.oil_price import (
+            OilPriceAPIFetcher,
+            OilPriceAPIQueryParams,
+            ResponseSchemaError,
+        )
+
+        with pytest.raises(ResponseSchemaError, match="price"):
+            OilPriceAPIFetcher.transform_data(
+                OilPriceAPIQueryParams(symbol="WTI"),
+                [
+                    {
+                        "code": "WTI_USD",
+                        "currency": "USD",
+                        "unit": "barrel",
+                        "updated_at": "2026-07-19T12:00:00Z",
+                    }
+                ],
+            )
+
+    @pytest.mark.parametrize("timestamp", [None, "not-a-timestamp"])
+    def test_transform_rejects_missing_or_malformed_timestamp(self, timestamp):
+        """The provider must not fabricate an observation timestamp."""
+        from openbb_oilpriceapi.models.oil_price import (
+            OilPriceAPIFetcher,
+            OilPriceAPIQueryParams,
+            ResponseSchemaError,
+        )
+
+        item = {
+            "code": "WTI_USD",
+            "price": 73.91,
+            "currency": "USD",
+            "unit": "barrel",
+        }
+        if timestamp is not None:
+            item["updated_at"] = timestamp
+
+        with pytest.raises(ResponseSchemaError, match="timestamp"):
+            OilPriceAPIFetcher.transform_data(
+                OilPriceAPIQueryParams(symbol="WTI"), [item]
+            )
+
+    @pytest.mark.asyncio
+    async def test_empty_success_response_raises_schema_error(self):
+        """A 200 response without a price is not a successful provider result."""
+        from openbb_oilpriceapi.models.oil_price import (
+            OilPriceAPIFetcher,
+            OilPriceAPIQueryParams,
+            ResponseSchemaError,
+        )
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"status": "success", "data": {}}
+        with patch("httpx.AsyncClient") as mock_client:
+            client = AsyncMock()
+            client.get.return_value = response
+            client.__aenter__.return_value = client
+            client.__aexit__.return_value = None
+            mock_client.return_value = client
+
+            with pytest.raises(ResponseSchemaError, match="usable price"):
+                await OilPriceAPIFetcher.aextract_data(
+                    OilPriceAPIQueryParams(symbol="WTI"), {"api_key": "test_key"}
+                )
+
+    @pytest.mark.asyncio
+    async def test_entitlement_error_on_403(self):
+        """Locked datasets return a typed error with a recovery URL."""
+        from openbb_oilpriceapi.models.oil_price import (
+            EntitlementError,
+            OilPriceAPIFetcher,
+            OilPriceAPIQueryParams,
+        )
+
+        response = MagicMock(status_code=403)
+        with patch("httpx.AsyncClient") as mock_client:
+            client = AsyncMock()
+            client.get.return_value = response
+            client.__aenter__.return_value = client
+            client.__aexit__.return_value = None
+            mock_client.return_value = client
+
+            with pytest.raises(EntitlementError, match="oilpriceapi.com/pricing"):
+                await OilPriceAPIFetcher.aextract_data(
+                    OilPriceAPIQueryParams(symbol="WTI"), {"api_key": "test_key"}
+                )
+
+    @pytest.mark.asyncio
+    async def test_timeout_is_mapped_to_provider_error(self):
+        """Network timeouts expose an actionable typed error."""
+        from openbb_oilpriceapi.models.oil_price import (
+            OilPriceAPIFetcher,
+            OilPriceAPIQueryParams,
+            ProviderTimeoutError,
+        )
+
+        with patch("httpx.AsyncClient") as mock_client:
+            client = AsyncMock()
+            client.get.side_effect = httpx.ReadTimeout("timed out")
+            client.__aenter__.return_value = client
+            client.__aexit__.return_value = None
+            mock_client.return_value = client
+
+            with pytest.raises(ProviderTimeoutError, match="timed out"):
+                await OilPriceAPIFetcher.aextract_data(
+                    OilPriceAPIQueryParams(symbol="WTI"), {"api_key": "test_key"}
+                )
+
+    @pytest.mark.asyncio
+    async def test_rate_limit_retries_three_times_then_raises(self):
+        """A 429 is retried exactly three times without hiding exhaustion."""
+        from openbb_oilpriceapi.models.oil_price import (
+            OilPriceAPIFetcher,
+            OilPriceAPIQueryParams,
+            RateLimitError,
+        )
+
+        response = MagicMock(status_code=429)
+        client = AsyncMock()
+        client.get.return_value = response
+        client.__aenter__.return_value = client
+        client.__aexit__.return_value = None
+        fast_retry = OilPriceAPIFetcher._fetch_with_retry.retry_with(wait=wait_none())
+
+        with (
+            patch("httpx.AsyncClient", return_value=client),
+            patch.object(OilPriceAPIFetcher, "_fetch_with_retry", fast_retry),
+            pytest.raises(RateLimitError, match="after 3 retries"),
+        ):
+            await OilPriceAPIFetcher.aextract_data(
+                OilPriceAPIQueryParams(symbol="WTI"), {"api_key": "test_key"}
+            )
+
+        assert client.get.await_count == 3
+
+    @pytest.mark.asyncio
+    async def test_malformed_json_success_raises_schema_error(self):
+        """A 200 with malformed JSON is a typed provider failure."""
+        from openbb_oilpriceapi.models.oil_price import (
+            OilPriceAPIFetcher,
+            OilPriceAPIQueryParams,
+            ResponseSchemaError,
+        )
+
+        response = MagicMock(status_code=200)
+        response.json.side_effect = ValueError("invalid JSON")
+        client = AsyncMock()
+        client.get.return_value = response
+        client.__aenter__.return_value = client
+        client.__aexit__.return_value = None
+
+        with (
+            patch("httpx.AsyncClient", return_value=client),
+            pytest.raises(ResponseSchemaError, match="malformed JSON"),
+        ):
+            await OilPriceAPIFetcher.aextract_data(
+                OilPriceAPIQueryParams(symbol="WTI"), {"api_key": "test_key"}
+            )
 
     @pytest.mark.asyncio
     async def test_successful_fetch_single_legacy(self, mock_api_response_single):
@@ -423,7 +587,7 @@ class TestProviderRegistration:
         """Test provider website is set."""
         from openbb_oilpriceapi import oilpriceapi_provider
 
-        assert oilpriceapi_provider.website == "https://oilpriceapi.com"
+        assert oilpriceapi_provider.website == "https://www.oilpriceapi.com"
 
     def test_provider_description(self):
         """Test provider has description."""
