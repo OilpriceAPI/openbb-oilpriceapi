@@ -1,197 +1,137 @@
 # openbb-oilpriceapi
 
-[![PyPI version](https://badge.fury.io/py/openbb-oilpriceapi.svg)](https://badge.fury.io/py/openbb-oilpriceapi)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://badge.fury.io/py/openbb-oilpriceapi.svg)](https://pypi.org/project/openbb-oilpriceapi/)
+[![CI](https://github.com/OilpriceAPI/openbb-oilpriceapi/actions/workflows/ci.yml/badge.svg)](https://github.com/OilpriceAPI/openbb-oilpriceapi/actions/workflows/ci.yml)
 
-OpenBB provider for [OilPriceAPI](https://oilpriceapi.com) - Real-time oil and commodity prices.
+OpenBB provider fetchers for source-timestamped records from
+[OilPriceAPI](https://www.oilpriceapi.com). Dataset access depends on the API
+key's plan, source, and account entitlements.
 
-## Installation
+## Install
 
 ```bash
-pip install openbb-oilpriceapi
+python -m pip install openbb-oilpriceapi
 ```
 
-## Quick Start
+The package registers the `oilpriceapi` provider extension and these provider
+models:
 
-```python
-from openbb import obb
+| Provider model | Fetcher | Purpose |
+| --- | --- | --- |
+| `OilPrice` | `OilPriceAPIFetcher` | Latest available price record |
+| `OilHistorical` | `OilHistoricalFetcher` | Versioned historical-period records |
 
-# Configure your API key (get free key at https://www.oilpriceapi.com/signup?utm_source=openbb&utm_medium=integration&utm_campaign=readme)
-obb.user.credentials.oilpriceapi_api_key = "your_api_key"
+These are provider fetchers, not an OpenBB router extension. OpenBB documents
+direct fetcher execution as the supported way to use a provider independently
+of a router.
 
-# Get all commodity prices
-prices = obb.commodity.oil.price(provider="oilpriceapi")
-df = prices.to_dataframe()
-print(df)
+## Quickstart
 
-# Get specific commodity (WTI crude)
-wti = obb.commodity.oil.price(symbol="WTI", provider="oilpriceapi")
-print(f"WTI Price: ${wti.results[0].price}/barrel")
-```
-
-## Supported Commodities
-
-| Symbol        | Name             | Description                       |
-| ------------- | ---------------- | --------------------------------- |
-| `WTI`         | WTI Crude Oil    | West Texas Intermediate benchmark |
-| `BRENT`       | Brent Crude Oil  | North Sea benchmark               |
-| `URALS`       | Urals Crude Oil  | Russian export blend              |
-| `DUBAI`       | Dubai Crude Oil  | Middle East benchmark             |
-| `NG`          | Natural Gas (US) | Henry Hub                         |
-| `NG_EU`       | Natural Gas (EU) | TTF                               |
-| `NG_UK`       | Natural Gas (UK) | NBP                               |
-| `COAL`        | Coal             | Thermal coal                      |
-| `DIESEL_US`   | US Diesel        | Wholesale spot price              |
-| `GASOLINE_US` | US Gasoline      | Wholesale spot price              |
-
-## Configuration
-
-### Set Credentials
-
-You can set your API key in multiple ways:
-
-**Option 1: In Python**
-
-```python
-obb.user.credentials.oilpriceapi_api_key = "your_key"
-```
-
-**Option 2: Via settings file**
-Add to `~/.openbb_platform/user_settings.json`:
-
-```json
-{
-  "credentials": {
-    "oilpriceapi_api_key": "your_key"
-  }
-}
-```
-
-**Option 3: Environment variable**
+Create or manage a key at the
+[OilPriceAPI signup page](https://www.oilpriceapi.com/auth/signup?utm_source=openbb&utm_medium=integration&utm_campaign=readme),
+then set it outside your source code:
 
 ```bash
 export OPENBB_OILPRICEAPI_API_KEY="your_key"
+python examples/quickstart.py BRENT
 ```
 
-## Examples
-
-### Get Price History
+The equivalent Python query is:
 
 ```python
-# Get WTI prices for the past week
-history = obb.commodity.oil.historical(
-    symbol="WTI",
-    period="past_week",
-    provider="oilpriceapi"
+import asyncio
+import os
+
+from openbb_oilpriceapi.models import OilPriceAPIFetcher
+
+prices = asyncio.run(
+    OilPriceAPIFetcher.fetch_data(
+        {"symbol": "BRENT"},
+        {"api_key": os.environ["OPENBB_OILPRICEAPI_API_KEY"]},
+    )
 )
-df = history.to_dataframe()
+record = prices[0]
+print(record.symbol, record.price, record.currency, record.updated_at, record.source)
 ```
 
-### Compare Commodities
+For an OpenBB application settings file, the credential name is
+`oilpriceapi_api_key`. After installing a provider into an existing OpenBB
+environment, rebuild its extension map as described in the
+[OpenBB provider documentation](https://docs.openbb.co/odp/python/extensions/providers).
+
+## Symbols
+
+The package maps the following OpenBB-style symbols to OilPriceAPI codes. A
+mapping means the provider can construct the request; it does not guarantee
+that every API key can access that dataset.
+
+| Symbol | OilPriceAPI code |
+| --- | --- |
+| `WTI` | `WTI_USD` |
+| `BRENT` | `BRENT_CRUDE_USD` |
+| `URALS` | `URALS_CRUDE_USD` |
+| `DUBAI` | `DUBAI_CRUDE_USD` |
+| `NG` | `NATURAL_GAS_USD` |
+| `NG_EU` | `DUTCH_TTF_EUR` |
+| `NG_UK` | `NATURAL_GAS_GBP` |
+| `COAL` | `COAL_USD` |
+| `DIESEL_US` | `DIESEL_USD` |
+| `GASOLINE_US` | `GASOLINE_USD` |
+
+Omitting `symbol` from `OilPriceAPIFetcher` requests the API's default latest
+record. It does not request the complete catalog.
+
+## Historical Query
 
 ```python
-import pandas as pd
+import asyncio
+import os
 
-# Get all prices and compare
-prices = obb.commodity.oil.price(provider="oilpriceapi")
-df = prices.to_dataframe()
+from openbb_oilpriceapi.models import OilHistoricalFetcher
 
-# Filter for crude oils
-crude = df[df['symbol'].isin(['WTI', 'BRENT', 'URALS'])]
-print(crude[['symbol', 'price', 'change_percent']])
-```
-
-### Visualize Prices
-
-```python
-import matplotlib.pyplot as plt
-
-history = obb.commodity.oil.historical(
-    symbol="BRENT",
-    period="past_month",
-    provider="oilpriceapi"
+history = asyncio.run(
+    OilHistoricalFetcher.fetch_data(
+        {"symbol": "WTI", "period": "past_week"},
+        {"api_key": os.environ["OPENBB_OILPRICEAPI_API_KEY"]},
+    )
 )
-df = history.to_dataframe()
-
-plt.figure(figsize=(10, 6))
-plt.plot(df['date'], df['price'])
-plt.title('Brent Crude - Past Month')
-plt.ylabel('Price (USD/barrel)')
-plt.show()
+for record in history:
+    print(record.date, record.price, record.currency, record.unit, record.source)
 ```
 
-## API Reference
+Supported request values are `past_day`, `past_week`, and `past_month`.
+Response timestamps, units, currencies, and source labels are taken from the
+API response. The provider raises a typed error instead of inventing values
+when a successful response is empty or malformed.
 
-### OilPrice
+## Error Recovery
 
-Fetch latest commodity prices.
+The public exception classes are:
 
-**Parameters:**
+- `AuthenticationError`: add or replace the configured API key.
+- `EntitlementError`: review the current [pricing and access options](https://www.oilpriceapi.com/pricing).
+- `RateLimitError`: retry after the account's rate-limit window.
+- `ProviderTimeoutError`: retry the request later.
+- `ResponseSchemaError`: preserve the response context and report upstream schema drift.
+- `NotFoundError`: check the requested symbol mapping.
 
-- `symbol` (str, optional): Commodity symbol. If not provided, returns all commodities.
-- `provider` (str): Must be "oilpriceapi"
+## Product Facts
 
-**Returns:**
-
-- `symbol`: Commodity symbol
-- `name`: Commodity name
-- `price`: Current price
-- `currency`: Price currency
-- `unit`: Unit of measurement
-- `updated_at`: Last update timestamp
-- `change`: Price change (absolute)
-- `change_percent`: Price change (percentage)
-
-### OilHistorical
-
-Fetch historical price data.
-
-**Parameters:**
-
-- `symbol` (str, required): Commodity symbol
-- `period` (str): Historical period - `past_day` (24h hourly), `past_week` (7d daily), `past_month` (30d daily). Default: `past_week`
-- `provider` (str): Must be "oilpriceapi"
-
-**Returns:**
-
-- `date`: Price timestamp
-- `symbol`: Commodity symbol
-- `price`: Price at timestamp
-- `currency`: Price currency
-- `unit`: Unit of measurement
+Do not copy plan limits, catalog totals, source cadence, or redistribution terms
+from this repository. Those facts change independently of the provider. Use the
+[versioned product-facts contract](https://api.oilpriceapi.com/product-facts.json),
+[API documentation](https://docs.oilpriceapi.com), and
+[data-usage policy](https://www.oilpriceapi.com/legal/data-usage) when publishing
+derived material.
 
 ## Development
 
 ```bash
-# Clone the repository
-git clone https://github.com/OilpriceAPI/openbb-oilpriceapi.git
-cd openbb-oilpriceapi
-
-# Install dependencies
 poetry install
-
-# Run tests
-poetry run pytest
-
-# Run tests with coverage
-poetry run pytest --cov=openbb_oilpriceapi
+poetry run pytest -q
+poetry build
 ```
-
-## Links
-
-- [OilPriceAPI Website](https://www.oilpriceapi.com)
-- [Sign Up](https://www.oilpriceapi.com/signup?utm_source=openbb&utm_medium=integration&utm_campaign=readme)
-- [OilPriceAPI Documentation](https://docs.oilpriceapi.com)
-- [Pricing](https://www.oilpriceapi.com/pricing?utm_source=openbb&utm_medium=integration&utm_campaign=pricing)
-- [OpenBB Platform](https://openbb.co)
-- [GitHub Repository](https://github.com/OilpriceAPI/openbb-oilpriceapi)
-
-## Also Available As
-
-- **[Python SDK](https://pypi.org/project/oilpriceapi/)** - Standalone Python client with Pandas integration
-- **[MCP Server](https://www.npmjs.com/package/oilpriceapi-mcp)** - Model Context Protocol server for Claude and Cursor
-- **[Google Sheets Add-on](https://github.com/OilpriceAPI/google-sheets-addin)** - Custom functions for spreadsheets
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+[MIT](LICENSE)

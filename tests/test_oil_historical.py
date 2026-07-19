@@ -74,17 +74,17 @@ class TestOilHistoricalData:
         assert data.currency == "USD"
         assert data.unit == "barrel"
 
-    def test_default_currency_and_unit(self):
-        """Test default values for currency and unit."""
+    def test_currency_and_unit_are_required(self):
+        """Historical results must not fabricate currency or unit."""
         from openbb_oilpriceapi.models.oil_historical import OilHistoricalData
+        from pydantic import ValidationError
 
-        data = OilHistoricalData(
-            date=datetime.now(),
-            symbol="WTI",
-            price=72.50,
-        )
-        assert data.currency == "USD"
-        assert data.unit == "barrel"
+        with pytest.raises(ValidationError):
+            OilHistoricalData(
+                date=datetime.now(),
+                symbol="WTI",
+                price=72.50,
+            )
 
 
 class TestOilHistoricalFetcher:
@@ -102,6 +102,7 @@ class TestOilHistoricalFetcher:
                         "currency": "USD",
                         "unit": "per barrel",
                         "created_at": "2025-12-20T12:00:00Z",
+                        "source": "market_reporting",
                     },
                     {
                         "code": "WTI_USD",
@@ -177,11 +178,66 @@ class TestOilHistoricalFetcher:
         result = OilHistoricalFetcher.transform_data(query, data)
 
         assert result[0].unit == "barrel"  # Not "per barrel"
+        assert result[0].source == "market_reporting"
+
+    def test_transform_rejects_missing_or_malformed_fields(self):
+        """Historical transformation rejects schema drift instead of skipping it."""
+        from openbb_oilpriceapi.models.oil_historical import (
+            OilHistoricalFetcher,
+            OilHistoricalQueryParams,
+        )
+        from openbb_oilpriceapi.models.oil_price import ResponseSchemaError
+
+        query = OilHistoricalQueryParams(symbol="WTI")
+        for item in [
+            {
+                "code": "WTI_USD",
+                "currency": "USD",
+                "unit": "barrel",
+                "created_at": "2026-07-19T12:00:00Z",
+            },
+            {"code": "WTI_USD", "price": 70.0, "currency": "USD", "unit": "barrel"},
+            {
+                "code": "WTI_USD",
+                "price": 70.0,
+                "currency": "USD",
+                "unit": "barrel",
+                "created_at": "not-a-date",
+            },
+        ]:
+            with pytest.raises(ResponseSchemaError):
+                OilHistoricalFetcher.transform_data(query, [item])
+
+    @pytest.mark.asyncio
+    async def test_empty_success_response_raises_schema_error(self):
+        """A historical 200 without records is not a successful result."""
+        from openbb_oilpriceapi.models.oil_historical import (
+            OilHistoricalFetcher,
+            OilHistoricalQueryParams,
+        )
+        from openbb_oilpriceapi.models.oil_price import ResponseSchemaError
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"status": "success", "data": {"prices": []}}
+        with patch("httpx.AsyncClient") as mock_client:
+            client = AsyncMock()
+            client.get.return_value = response
+            client.__aenter__.return_value = client
+            client.__aexit__.return_value = None
+            mock_client.return_value = client
+
+            with pytest.raises(ResponseSchemaError, match="historical"):
+                await OilHistoricalFetcher.aextract_data(
+                    OilHistoricalQueryParams(symbol="WTI"), {"api_key": "test_key"}
+                )
 
     @pytest.mark.asyncio
     async def test_missing_api_key_raises(self):
         """Test that missing API key raises AuthenticationError."""
-        from openbb_oilpriceapi.models.oil_historical import OilHistoricalFetcher, OilHistoricalQueryParams
+        from openbb_oilpriceapi.models.oil_historical import (
+            OilHistoricalFetcher,
+            OilHistoricalQueryParams,
+        )
         from openbb_oilpriceapi.models.oil_price import AuthenticationError
 
         query = OilHistoricalQueryParams(symbol="WTI")

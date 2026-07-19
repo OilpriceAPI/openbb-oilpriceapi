@@ -7,6 +7,9 @@ from openbb_oilpriceapi.models.oil_price import (
     OilPriceAPIError,
     AuthenticationError,
     RateLimitError,
+    EntitlementError,
+    ProviderTimeoutError,
+    ResponseSchemaError,
     NotFoundError,
 )
 from openbb_oilpriceapi.models.oil_historical import (
@@ -22,6 +25,9 @@ __all__ = [
     "OilPriceAPIError",
     "AuthenticationError",
     "RateLimitError",
+    "EntitlementError",
+    "ProviderTimeoutError",
+    "ResponseSchemaError",
     "NotFoundError",
     "OilHistoricalFetcher",
     "OilHistoricalQueryParams",

@@ -46,6 +46,11 @@ jobs:
       - name: Run tests
         run: poetry run pytest tests/ -v --cov=openbb_oilpriceapi --cov-report=xml
 
+      - name: Run static checks
+        run: |
+          poetry run ruff check openbb_oilpriceapi tests examples
+          poetry run ruff format --check openbb_oilpriceapi tests examples
+
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12'
         uses: codecov/codecov-action@v4
@@ -53,8 +58,49 @@ jobs:
           file: ./coverage.xml
           fail_ci_if_error: false
 
-  publish:
+  package:
     needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 1.8.2
+
+      - name: Build wheel
+        run: poetry build
+
+      - name: Verify isolated provider entry point
+        run: |
+          python -m venv /tmp/openbb-provider-smoke
+          /tmp/openbb-provider-smoke/bin/pip install dist/*.whl
+          EXPECTED_VERSION="$(poetry version -s)" /tmp/openbb-provider-smoke/bin/python - <<'PY'
+          from importlib.metadata import entry_points, version
+          import os
+          from openbb_oilpriceapi import oilpriceapi_provider
+
+          assert version("openbb-oilpriceapi") == os.environ["EXPECTED_VERSION"]
+          assert oilpriceapi_provider.name == "oilpriceapi"
+          assert set(oilpriceapi_provider.fetcher_dict) == {"OilPrice", "OilHistorical"}
+          matches = [
+              entry_point
+              for entry_point in entry_points(group="openbb_provider_extension")
+              if entry_point.name == "oilpriceapi"
+          ]
+          assert len(matches) == 1
+          assert matches[0].load().name == "oilpriceapi"
+          PY
+
+  publish:
+    needs: [test, package]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
 

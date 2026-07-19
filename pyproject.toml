@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "openbb-oilpriceapi"
-version = "0.1.1"
-description = "OpenBB provider for OilPriceAPI - Real-time oil and commodity prices (WTI, Brent, Urals, Natural Gas, Coal)"
+version = "0.2.0"
+description = "OpenBB provider fetchers for source-timestamped OilPriceAPI energy prices"
 authors = ["OilPriceAPI <support@oilpriceapi.com>"]
 license = "MIT"
 readme = "README.md"
@@ -20,6 +20,7 @@ pytest = "^8.0.0"
 pytest-asyncio = "^0.23.0"
 pytest-cov = "^4.1.0"
 respx = "^0.21.0"
+ruff = "^0.15.0"
 
 [build-system]
 requires = ["poetry-core"]
