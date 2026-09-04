@@ -61,9 +61,12 @@ environment, rebuild its extension map as described in the
 
 ## Symbols
 
-The package maps the following OpenBB-style symbols to OilPriceAPI codes. A
-mapping means the provider can construct the request; it does not guarantee
-that every API key can access that dataset.
+The package deliberately exposes a curated, versioned set of OpenBB-style
+symbols rather than dynamically importing `/commodities`. OpenBB query choices
+must be deterministic, while the API catalog and account entitlements can
+change independently. A mapping means the provider can construct the request;
+it does not guarantee that every API key can access that dataset. New mappings
+are reviewed and shipped in provider releases.
 
 | Symbol | OilPriceAPI code |
 | --- | --- |
@@ -99,7 +102,8 @@ for record in history:
     print(record.date, record.price, record.currency, record.unit, record.source)
 ```
 
-Supported request values are `past_day`, `past_week`, and `past_month`.
+Supported request values are `past_day`, `past_week`, `past_month`, and
+`past_year`.
 Response timestamps, units, currencies, and source labels are taken from the
 API response. The provider raises a typed error instead of inventing values
 when a successful response is empty or malformed.
@@ -131,6 +135,16 @@ poetry install
 poetry run pytest -q
 poetry build
 ```
+
+To run the bounded production smoke (one latest request and one `past_year`
+request) with a safe test credential:
+
+```bash
+OPENBB_OILPRICEAPI_API_KEY="..." poetry run python scripts/live_smoke.py
+```
+
+The smoke prints only the returned symbol and history record count; it never
+prints the credential or request headers.
 
 ## License
 

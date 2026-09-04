@@ -27,7 +27,7 @@ class TestOilHistoricalQueryParams:
         """Test all valid periods."""
         from openbb_oilpriceapi.models.oil_historical import OilHistoricalQueryParams
 
-        for period in ["past_day", "past_week", "past_month"]:
+        for period in ["past_day", "past_week", "past_month", "past_year"]:
             params = OilHistoricalQueryParams(symbol="WTI", period=period)
             assert params.period == period
 
@@ -37,7 +37,7 @@ class TestOilHistoricalQueryParams:
         from pydantic import ValidationError
 
         with pytest.raises(ValidationError):
-            OilHistoricalQueryParams(symbol="WTI", period="past_year")
+            OilHistoricalQueryParams(symbol="WTI", period="past_decade")
 
     def test_symbol_case_insensitive(self):
         """Test that symbol is case-insensitive."""
@@ -273,6 +273,31 @@ class TestOilHistoricalFetcher:
             call_args = mock_instance.get.call_args
             assert "past_week" in call_args[0][0]
             assert "WTI_USD" in call_args[0][0]
+
+    @pytest.mark.asyncio
+    async def test_past_year_fetch_uses_versioned_endpoint(self, mock_api_response):
+        """The added period must reach the API instead of only validating locally."""
+        from openbb_oilpriceapi.models.oil_historical import (
+            OilHistoricalFetcher,
+            OilHistoricalQueryParams,
+        )
+
+        response = MagicMock(status_code=200)
+        response.json.return_value = mock_api_response
+
+        with patch("httpx.AsyncClient") as mock_client:
+            client = AsyncMock()
+            client.get.return_value = response
+            client.__aenter__.return_value = client
+            client.__aexit__.return_value = None
+            mock_client.return_value = client
+
+            await OilHistoricalFetcher.aextract_data(
+                OilHistoricalQueryParams(symbol="WTI", period="past_year"),
+                {"api_key": "test_key"},
+            )
+
+        assert "/prices/past_year?" in client.get.call_args.args[0]
 
     @pytest.mark.asyncio
     async def test_auth_error_on_401(self):
