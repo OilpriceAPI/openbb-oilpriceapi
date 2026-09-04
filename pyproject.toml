@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "openbb-oilpriceapi"
-version = "0.2.0"
+version = "0.3.0"
 description = "OpenBB provider fetchers for source-timestamped OilPriceAPI energy prices"
 authors = ["OilPriceAPI <support@oilpriceapi.com>"]
 license = "MIT"

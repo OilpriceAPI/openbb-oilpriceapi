@@ -22,6 +22,7 @@ from openbb_oilpriceapi.utils.constants import (
     OILPRICEAPI_BASE_URL,
     REVERSE_SYMBOL_MAPPING,
 )
+from openbb_oilpriceapi.utils.telemetry import build_request_headers
 
 
 class OilPriceAPIError(Exception):
@@ -190,10 +191,7 @@ class OilPriceAPIFetcher(Fetcher[OilPriceAPIQueryParams, list[OilPriceAPIData]])
                 "Create or manage a key at https://www.oilpriceapi.com/auth/signup"
             )
 
-        headers = {
-            "Authorization": f"Token {api_key}",
-            "Accept": "application/json",
-        }
+        headers = build_request_headers(api_key)
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             # Determine endpoint based on symbol

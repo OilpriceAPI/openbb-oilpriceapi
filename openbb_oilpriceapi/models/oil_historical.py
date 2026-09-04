@@ -20,10 +20,11 @@ from openbb_oilpriceapi.models.oil_price import (
     RateLimitError,
     ResponseSchemaError,
 )
+from openbb_oilpriceapi.utils.telemetry import build_request_headers
 
 
 # Supported historical periods
-HISTORICAL_PERIODS = ["past_day", "past_week", "past_month"]
+HISTORICAL_PERIODS = ["past_day", "past_week", "past_month", "past_year"]
 
 
 class OilHistoricalQueryParams(QueryParams):
@@ -47,7 +48,7 @@ class OilHistoricalQueryParams(QueryParams):
         description="The commodity symbol to fetch historical data for. "
         f"Available symbols: {', '.join(AVAILABLE_SYMBOLS)}",
     )
-    period: Literal["past_day", "past_week", "past_month"] = Field(
+    period: Literal["past_day", "past_week", "past_month", "past_year"] = Field(
         default="past_week",
         description="Versioned OilPriceAPI historical period to request.",
     )
@@ -101,10 +102,7 @@ class OilHistoricalFetcher(Fetcher[OilHistoricalQueryParams, list[OilHistoricalD
                 "Create or manage a key at https://www.oilpriceapi.com/auth/signup"
             )
 
-        headers = {
-            "Authorization": f"Token {api_key}",
-            "Accept": "application/json",
-        }
+        headers = build_request_headers(api_key)
 
         # Map OpenBB symbol to OilPriceAPI code
         oilpriceapi_code = SYMBOL_MAPPING.get(query.symbol, query.symbol)
