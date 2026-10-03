@@ -1,6 +1,9 @@
 """OilPriceAPI Oil Price model and fetcher."""
 
-from datetime import datetime
+import asyncio
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from math import isfinite
 from typing import Any
 
@@ -9,13 +12,6 @@ from openbb_core.provider.abstract.fetcher import Fetcher
 from openbb_core.provider.abstract.query_params import QueryParams
 from openbb_core.provider.abstract.data import Data
 from pydantic import Field, field_validator
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_exponential,
-    retry_if_exception_type,
-)
-
 from openbb_oilpriceapi.utils.constants import (
     SYMBOL_MAPPING,
     AVAILABLE_SYMBOLS,
@@ -38,9 +34,104 @@ class AuthenticationError(OilPriceAPIError):
 
 
 class RateLimitError(OilPriceAPIError):
-    """Raised when rate limit is exceeded."""
+    """Raised when rate limit is exceeded.
 
-    pass
+    ``durable`` is True when the account's quota or trial is exhausted; those
+    429s cannot succeed on retry. ``retry_after`` is the server's Retry-After in
+    seconds, when it sent a parseable one.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: str | None = None,
+        retry_after: float | None = None,
+        retry_after_header_present: bool = False,
+        upgrade_url: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.error_code = error_code
+        self.retry_after = retry_after
+        self.retry_after_header_present = retry_after_header_present
+        self.upgrade_url = upgrade_url
+
+    @property
+    def durable(self) -> bool:
+        return self.error_code in DURABLE_QUOTA_ERROR_CODES
+
+    @classmethod
+    def from_response(cls, response: Any) -> "RateLimitError":
+        """Build the error from a 429 response's body and Retry-After header."""
+        try:
+            body = response.json()
+        except Exception:  # noqa: BLE001 - any unreadable body is "no detail"
+            body = None
+        if not isinstance(body, dict):
+            body = {}
+        error_code = body.get("error_code")
+        error_code = error_code if isinstance(error_code, str) else None
+        server_message = body.get("message")
+        upgrade_url = body.get("upgrade_url")
+        upgrade_url = upgrade_url if isinstance(upgrade_url, str) else None
+
+        raw_header = None
+        response_headers = getattr(response, "headers", None)
+        if response_headers is not None and hasattr(response_headers, "get"):
+            raw_header = response_headers.get("Retry-After")
+        retry_after = parse_retry_after(raw_header)
+
+        parts = ["OilPriceAPI rate limit exceeded"]
+        if error_code:
+            parts[0] += f" ({error_code})"
+        parts[0] += "."
+        if isinstance(server_message, str) and server_message.strip():
+            parts.append(server_message.strip())
+        if retry_after is not None:
+            parts.append(f"Retry after {int(retry_after)} seconds.")
+        if upgrade_url:
+            parts.append(f"Upgrade: {upgrade_url}")
+        return cls(
+            " ".join(parts),
+            error_code=error_code,
+            retry_after=retry_after,
+            retry_after_header_present=isinstance(raw_header, str),
+            upgrade_url=upgrade_url,
+        )
+
+
+# 429 error codes that mean the account's allowance is used up. Retrying cannot
+# succeed until the quota resets or the plan changes.
+DURABLE_QUOTA_ERROR_CODES = frozenset(
+    {
+        "MONTHLY_QUOTA_EXCEEDED",
+        "TRIAL_EXPIRED",
+        "TRIAL_LIMIT_EXCEEDED",
+        "EMAIL_CONFIRMATION_REQUIRED",
+        "PAYMENT_REQUIRED",
+        "RATE_LIMIT_EXCEEDED",
+    }
+)
+MAX_ATTEMPTS = 3
+# Longest server-requested wait the provider will sit through before raising.
+MAX_RETRY_WAIT_SECONDS = 10.0
+
+
+def parse_retry_after(value: Any, now: datetime | None = None) -> float | None:
+    """Parse a Retry-After header (delta-seconds or HTTP-date) into seconds."""
+    if not isinstance(value, str) or not value.strip():
+        return None
+    value = value.strip()
+    if value.isdigit():
+        return float(value)
+    try:
+        when = parsedate_to_datetime(value)
+    except (TypeError, ValueError, IndexError):
+        return None
+    if when is None or when.tzinfo is None:
+        return None
+    current = now or datetime.now(timezone.utc)
+    return max((when - current).total_seconds(), 0.0)
 
 
 class EntitlementError(OilPriceAPIError):
@@ -129,18 +220,39 @@ class OilPriceAPIFetcher(Fetcher[OilPriceAPIQueryParams, list[OilPriceAPIData]])
         return OilPriceAPIQueryParams(**params)
 
     @staticmethod
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=10),
-        retry=retry_if_exception_type(RateLimitError),
-        reraise=True,
-    )
     async def _fetch_with_retry(
         client: httpx.AsyncClient,
         url: str,
         headers: dict[str, str],
+        sleep: Callable[[float], Awaitable[Any]] = asyncio.sleep,
     ) -> dict[str, Any]:
-        """Fetch data with retry logic for rate limits."""
+        """Fetch data, retrying only short-lived 429s within the wait budget."""
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            try:
+                return await OilPriceAPIFetcher._fetch_once(client, url, headers)
+            except RateLimitError as exc:
+                if exc.durable or attempt == MAX_ATTEMPTS:
+                    raise
+                if exc.retry_after is not None:
+                    delay = exc.retry_after
+                elif exc.retry_after_header_present:
+                    # Unparseable Retry-After: we cannot honor it, so do not
+                    # guess and retry early.
+                    raise
+                else:
+                    delay = float(2 ** (attempt - 1))
+                if delay > MAX_RETRY_WAIT_SECONDS:
+                    raise
+                await sleep(delay)
+        raise AssertionError("unreachable")  # pragma: no cover
+
+    @staticmethod
+    async def _fetch_once(
+        client: httpx.AsyncClient,
+        url: str,
+        headers: dict[str, str],
+    ) -> dict[str, Any]:
+        """Perform one request and map error statuses to typed errors."""
         try:
             response = await client.get(url, headers=headers)
         except httpx.TimeoutException as exc:
@@ -153,9 +265,7 @@ class OilPriceAPIFetcher(Fetcher[OilPriceAPIQueryParams, list[OilPriceAPIData]])
                 "Invalid API key. Check your OilPriceAPI credentials."
             )
         if response.status_code == 429:
-            raise RateLimitError(
-                "Rate limit exceeded. Retrying with exponential backoff..."
-            )
+            raise RateLimitError.from_response(response)
         if response.status_code in (402, 403):
             raise EntitlementError(
                 "This account cannot access the requested dataset. "
@@ -202,14 +312,7 @@ class OilPriceAPIFetcher(Fetcher[OilPriceAPIQueryParams, list[OilPriceAPIData]])
             else:
                 url = f"{OILPRICEAPI_BASE_URL}/prices/latest"
 
-            try:
-                data = await OilPriceAPIFetcher._fetch_with_retry(client, url, headers)
-            except RateLimitError:
-                # Re-raise with user-friendly message after retries exhausted
-                raise RateLimitError(
-                    "Rate limit exceeded after 3 retries. "
-                    "Please wait before making more requests."
-                )
+            data = await OilPriceAPIFetcher._fetch_with_retry(client, url, headers)
 
             payload = data.get("data")
             records: Any = None

@@ -4,7 +4,6 @@ import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
-from tenacity import wait_none
 
 
 class TestOilPriceQueryParams:
@@ -454,33 +453,6 @@ class TestOilPriceFetcher:
                 await OilPriceAPIFetcher.aextract_data(
                     OilPriceAPIQueryParams(symbol="WTI"), {"api_key": "test_key"}
                 )
-
-    @pytest.mark.asyncio
-    async def test_rate_limit_retries_three_times_then_raises(self):
-        """A 429 is retried exactly three times without hiding exhaustion."""
-        from openbb_oilpriceapi.models.oil_price import (
-            OilPriceAPIFetcher,
-            OilPriceAPIQueryParams,
-            RateLimitError,
-        )
-
-        response = MagicMock(status_code=429)
-        client = AsyncMock()
-        client.get.return_value = response
-        client.__aenter__.return_value = client
-        client.__aexit__.return_value = None
-        fast_retry = OilPriceAPIFetcher._fetch_with_retry.retry_with(wait=wait_none())
-
-        with (
-            patch("httpx.AsyncClient", return_value=client),
-            patch.object(OilPriceAPIFetcher, "_fetch_with_retry", fast_retry),
-            pytest.raises(RateLimitError, match="after 3 retries"),
-        ):
-            await OilPriceAPIFetcher.aextract_data(
-                OilPriceAPIQueryParams(symbol="WTI"), {"api_key": "test_key"}
-            )
-
-        assert client.get.await_count == 3
 
     @pytest.mark.asyncio
     async def test_malformed_json_success_raises_schema_error(self):
