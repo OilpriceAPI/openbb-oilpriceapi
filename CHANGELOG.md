@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.1 - 2026-10-03
+
+- Stop retrying 429s that cannot succeed. `MONTHLY_QUOTA_EXCEEDED`,
+  `TRIAL_EXPIRED`, `TRIAL_LIMIT_EXCEEDED`, `EMAIL_CONFIRMATION_REQUIRED` and
+  `RATE_LIMIT_EXCEEDED` now make one request and raise `RateLimitError` with the
+  server's message, error code, `Retry-After` and upgrade link (#17).
+- Short-lived 429s honor `Retry-After` (delta-seconds or HTTP-date) when it is
+  10 seconds or less. A longer or unparseable value raises immediately instead
+  of retrying early. Without the header, back off 1s then 2s. Three attempts at
+  most.
+- Drop the `tenacity` dependency.
+
 ## 0.3.0 - 2026-09-04
 
 - Identify latest and historical requests as `oilpriceapi-openbb/<version>` and

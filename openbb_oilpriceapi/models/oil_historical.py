@@ -17,7 +17,6 @@ from openbb_oilpriceapi.utils.constants import (
 from openbb_oilpriceapi.models.oil_price import (
     AuthenticationError,
     OilPriceAPIFetcher,
-    RateLimitError,
     ResponseSchemaError,
 )
 from openbb_oilpriceapi.utils.telemetry import build_request_headers
@@ -109,13 +108,7 @@ class OilHistoricalFetcher(Fetcher[OilHistoricalQueryParams, list[OilHistoricalD
         url = f"{OILPRICEAPI_BASE_URL}/prices/{query.period}?by_code={oilpriceapi_code}"
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            try:
-                data = await OilPriceAPIFetcher._fetch_with_retry(client, url, headers)
-            except RateLimitError:
-                raise RateLimitError(
-                    "Rate limit exceeded after 3 retries. "
-                    "Please wait before making more requests."
-                )
+            data = await OilPriceAPIFetcher._fetch_with_retry(client, url, headers)
 
             payload = data.get("data")
             records: Any = None

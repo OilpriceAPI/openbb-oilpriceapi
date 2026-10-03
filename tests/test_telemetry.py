@@ -83,4 +83,4 @@ async def test_all_request_paths_send_canonical_secret_safe_attribution(
 
 def test_attribution_version_is_the_installed_distribution_version() -> None:
     assert SDK_NAME == "oilpriceapi-openbb"
-    assert SDK_VERSION == version("openbb-oilpriceapi") == "0.3.0"
+    assert SDK_VERSION == version("openbb-oilpriceapi") == "0.3.1"
