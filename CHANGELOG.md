@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2 - 2026-10-17
+
+- Support OpenBB core 2.x while retaining compatibility with core 1.5.1.
+
 ## 0.3.1 - 2026-10-03
 
 - Stop retrying 429s that cannot succeed. `MONTHLY_QUOTA_EXCEEDED`,
