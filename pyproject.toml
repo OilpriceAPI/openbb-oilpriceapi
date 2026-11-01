@@ -19,7 +19,7 @@ pytest = ">=8,<10"
 pytest-asyncio = ">=0.23,<1.5"
 pytest-cov = ">=4.1,<8.0"
 respx = ">=0.21,<0.24"
-ruff = "^0.15.0"
+ruff = ">=0.15,<0.18"
 
 [build-system]
 requires = ["poetry-core"]
